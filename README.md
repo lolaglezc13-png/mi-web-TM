@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IA Clasificador de Imágenes Locales</title>
+    <!-- Tailwind CSS para un diseño moderno y seguro -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Librerías de TensorFlow.js y Teachable Machine -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        }
+        #image-preview {
+            max-width: 100%;
+            max-height: 350px;
+            border-radius: 1.5rem;
+            display: none;
+            object-fit: contain;
+            margin: 0 auto;
+        }
+        .drop-zone {
+            border: 3px dashed #cbd5e1;
+            transition: all 0.3s ease;
+            min-height: 200px;
+        }
+        .drop-zone.active {
+            border-color: #6366f1;
+            background-color: #f8fafc;
+        }
+        /* Garantiza que el texto nunca se corte */
+        .text-full-view {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            white-space: normal;
+            display: block;
+            width: 100%;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 font-sans min-h-screen flex flex-col items-center justify-center p-6">
+
+    <!-- Contenedor principal con ancho suficiente -->
+    <div class="max-w-2xl w-full bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-200">
+        
+        <!-- Encabezado -->
+        <div class="gradient-bg p-8 text-center text-white">
+            <h1 class="text-3xl font-extrabold mb-2 tracking-tight">Identificador de Reciclaje</h1>
+            <p class="text-indigo-100 text-base opacity-90 font-medium">Sube una foto para identificar el contenedor correcto</p>
+        </div>
+
+        <div class="p-8">
+            <!-- Zona de Carga de Archivo -->
+            <div id="drop-zone" class="drop-zone rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer mb-8 text-center bg-slate-50 hover:bg-slate-100 border-slate-200">
+                <input type="file" id="file-input" accept="image/*" class="hidden">
+                
+                <div id="upload-icon" class="space-y-4">
+                    <div class="bg-white p-4 rounded-full shadow-md inline-block border border-slate-100">
+                        <svg class="w-10 h-10 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-slate-700 font-bold text-lg">Haz clic o arrastra tu imagen aquí</p>
+                        <p class="text-slate-400 text-sm">Soporta fotos JPG y PNG</p>
+                    </div>
+                </div>
+
+                <img id="image-preview" src="#" alt="Vista previa" class="shadow-lg border-4 border-white">
+            </div>
+
+            <!-- Estado -->
+            <div id="status-msg" class="text-center text-sm font-bold text-indigo-600 mb-6 bg-indigo-50 py-3 rounded-2xl border border-indigo-100 italic">
+                Cargando cerebro de IA...
+            </div>
+
+            <!-- Resultados del análisis -->
+            <div id="label-container" class="grid gap-4">
+                <!-- Aquí aparecerán los nombres completados -->
+            </div>
+        </div>
+    </div>
+
+    <footer class="mt-8 text-slate-500 text-xs font-semibold text-center">
+        EduRecicla IA • Teachable Machine
+    </footer>
+
+    <script type="text/javascript">
+        const URL = "https://teachablemachine.withgoogle.com/models/hPW9DE_6k/";
+        let model, maxPredictions;
+
+        // Función para completar los nombres cortados del modelo
+        function completarNombre(textoOriginal) {
+            const txt = textoOriginal.toUpperCase().trim();
+            
+            // Lógica basada en tu imagen de ejemplo
+            if (txt.includes("CONTENEDOR A") || txt.includes("CONTENDOR A")) {
+                // Identificamos por posición si los nombres son idénticos en el modelo
+                if (labelContainer.children.length === 0) return "CONTENEDOR AMARILLO";
+                if (labelContainer.children.length === 1) return "CONTENEDOR AZUL";
+                return "CONTENEDOR AMARILLO/AZUL";
+            }
+            if (txt.includes("CONTENEDOR G")) return "CONTENEDOR GRIS";
+            if (txt.includes("CONTENDOR MA") || txt.includes("CONTENEDOR MA")) return "CONTENEDOR MARRÓN";
+            if (txt.includes("CONTENEDOR V")) return "CONTENEDOR VERDE";
+            
+            return textoOriginal;
+        }
+
+        const fileInput = document.getElementById('file-input');
+        const dropZone = document.getElementById('drop-zone');
+        const imagePreview = document.getElementById('image-preview');
+        const uploadIcon = document.getElementById('upload-icon');
+        const statusMsg = document.getElementById('status-msg');
+        const labelContainer = document.getElementById("label-container");
+
+        async function loadModel() {
+            try {
+                const modelURL = URL + "model.json";
+                const metadataURL = URL + "metadata.json";
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+                statusMsg.innerText = "¡IA lista! Sube una imagen para analizar.";
+            } catch (e) {
+                statusMsg.innerText = "Error al conectar con el servidor.";
+            }
+        }
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('active'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('active'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('active');
+            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+        });
+
+        function handleFile(file) {
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imagePreview.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                    uploadIcon.style.display = 'none';
+                    imagePreview.onload = () => predict();
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        async function predict() {
+            if (!model) return;
+            statusMsg.innerText = "Analizando... 🧠";
+            const prediction = await model.predict(imagePreview);
+            labelContainer.innerHTML = ""; 
+
+            for (let i = 0; i < maxPredictions; i++) {
+                const probability = (prediction[i].probability * 100).toFixed(1);
+                const nombreLimpio = completarNombre(prediction[i].className);
+
+                const resultCard = document.createElement("div");
+                resultCard.className = "bg-white p-5 rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col gap-3 transition-all";
+                
+                const isHigh = prediction[i].probability > 0.5;
+                const barColor = isHigh ? 'bg-indigo-600' : 'bg-slate-300';
+                const textStyle = isHigh ? 'text-indigo-900 font-black' : 'text-slate-600 font-bold';
+
+                resultCard.innerHTML = `
+                    <div class="text-full-view">
+                        <span class="text-lg leading-tight uppercase tracking-tight ${textStyle}">
+                            ${nombreLimpio}
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1 bg-slate-100 rounded-full h-4 overflow-hidden shadow-inner">
+                            <div class="${barColor} h-4 rounded-full transition-all duration-1000" style="width: ${probability}%"></div>
+                        </div>
+                        <span class="text-sm font-mono font-black min-w-[60px] text-right ${isHigh ? 'text-indigo-600' : 'text-slate-400'}">
+                            ${probability}%
+                        </span>
+                    </div>
+                `;
+                labelContainer.appendChild(resultCard);
+            }
+            statusMsg.innerText = "Análisis completado con éxito.";
+        }
+
+        window.onload = loadModel;
+    </script>
+</body>
+</html>
